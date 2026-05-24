@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>発車案内</title>
+<style>
+  :root {
+    --bg:     #050a0f;
+    --panel:  #090f18;
+    --border: #0d2035;
+    --cyan:   #00d4ff;
+    --orange: #ff7120;
+    --green:  #39ff14;
+    --red:    #ff2d55;
+    --dim:    #3a5a7a;
+    --text:   #ddeeff;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: 'Hiragino Sans', 'Noto Sans JP', sans-serif;
+    min-height: 100vh; padding-bottom: 60px;
+  }
+
+  header {
+    background: linear-gradient(90deg, #030810, #06122a, #030810);
+    border-bottom: 2px solid var(--cyan);
+    padding: 14px 16px;
+    display: flex; align-items: center; justify-content: space-between;
+    box-shadow: 0 0 20px rgba(0,200,255,0.2);
+    position: sticky; top: 0; z-index: 100;
+  }
+  .station-info { flex: 1; }
+  .station-name {
+    font-size: 1.8rem; font-weight: 900;
+    color: var(--cyan); text-shadow: 0 0 16px rgba(0,212,255,0.6);
+    letter-spacing: 0.05em;
+  }
+  .station-sub { font-size: 0.75rem; color: var(--dim); margin-top: 3px; }
+  .clock-box { text-align: right; }
+  .clock { font-family: monospace; font-size: 1.8rem; color: var(--text); }
+  .date  { font-size: 0.72rem; color: var(--dim); }
+
+  /* GPS状態バー */
+  .gps-bar {
+    background: rgba(0,212,255,0.06); border-bottom: 1px solid var(--border);
+    padding: 7px 16px; font-size: 0.72rem; color: var(--dim);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .gps-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--dim); flex-shrink: 0; }
+  .gps-dot.active { background: var(--green); box-shadow: 0 0 6px var(--green); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+
+  /* GPS失敗時のみ表示する手動切替 */
+  .manual-bar {
+    display: none;
+    gap: 6px; padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+  }
+  .manual-bar.visible { display: flex; }
+  .m-btn {
+    flex: 1; font-size: 0.78rem; padding: 6px 8px;
+    border-radius: 6px; border: 1px solid var(--border);
+    background: transparent; color: var(--dim); cursor: pointer;
+    text-align: center;
+  }
+  .m-btn.active { border-color: var(--cyan); color: var(--cyan); background: rgba(0,212,255,0.08); }
+
+  /* 電車カード */
+  .trains-section { padding: 14px 12px 0; }
+  .section-label {
+    font-size: 0.7rem; letter-spacing: 0.25em; color: var(--dim);
+    border-left: 3px solid var(--cyan); padding-left: 8px; margin-bottom: 12px;
+  }
+  .train-card {
+    background: var(--panel); border: 1px solid var(--border);
+    border-left: 5px solid var(--cyan); border-radius: 10px;
+    padding: 16px 14px; margin-bottom: 12px;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    grid-template-rows: auto auto;
+    gap: 6px 14px; align-items: center;
+  }
+  .train-card.next { border-left-color: var(--orange); box-shadow: 0 0 24px rgba(255,113,32,0.15); }
+  .dep-time {
+    font-family: monospace; font-size: 3rem; font-weight: 700;
+    color: var(--cyan); line-height: 1; grid-row: 1/3; align-self: center;
+    min-width: 120px;
+  }
+  .train-card.next .dep-time { color: var(--orange); }
+  .destination { font-size: 1.7rem; font-weight: 700; }
+  
+  .tags { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .tag {
+    font-size: 0.75rem; padding: 4px 10px; border-radius: 3px;
+    font-weight: 700; white-space: nowrap;
+  }
+  .tag-tokyu  { background: rgba(255,113,32,0.12); color: #ffaa44; border: 1px solid rgba(255,113,32,0.35); }
+  .tag-jr     { background: rgba(0,212,255,0.12);  color: var(--cyan); border: 1px solid rgba(0,212,255,0.35); }
+  .tag-cars   { background: rgba(255,255,255,0.05); color: #99bbcc; border: 1px solid rgba(255,255,255,0.1); }
+  .tag-ontime { background: rgba(57,255,20,0.1);   color: var(--green); border: 1px solid rgba(57,255,20,0.3); }
+  .tag-delay  { background: rgba(255,45,85,0.12);  color: var(--red);   border: 1px solid rgba(255,45,85,0.35); }
+  .tag-rank   {
+    background: transparent; color: var(--dim); border: 1px solid var(--dim);
+    border-radius: 50%; width: 28px; height: 28px; padding: 0;
+    display: flex; align-items: center; justify-content: center; font-size: 0.85rem;
+  }
+  .train-card.next .tag-rank { color: var(--orange); border-color: var(--orange); }
+  .delay-detail {
+    grid-column: 1/3; font-size: 0.75rem; color: var(--red);
+    background: rgba(255,45,85,0.07); border-radius: 4px;
+    padding: 5px 10px; margin-top: 4px;
+  }
+
+  #status-bar {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: var(--cyan); color: #000;
+    font-size: 0.65rem; font-weight: 700; letter-spacing: 0.08em;
+    padding: 6px 14px; display: flex; justify-content: space-between; z-index: 100;
+  }
+  .loading { text-align: center; padding: 50px 20px; color: var(--dim); font-size: 0.9rem; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="station-info">
+    <div class="station-name" id="h-station">取得中…</div>
+    <div class="station-sub" id="h-sub">位置情報を確認しています</div>
+  </div>
+  <div class="clock-box">
+    <div class="clock" id="clock">--:--</div>
+    <div class="date"  id="date-str"></div>
+  </div>
+</header>
+
+<div class="gps-bar">
+  <div class="gps-dot" id="gps-dot"></div>
+  <span id="gps-msg">GPS取得中…</span>
+</div>
+
+<!-- GPS失敗時のみ表示 -->
+<div class="manual-bar" id="manual-bar">
+  <button class="m-btn" onclick="manualSelect('sangenjaya')">三軒茶屋</button>
+  <button class="m-btn" onclick="manualSelect('ikejiriohashi')">池尻大橋</button>
+  <button class="m-btn" onclick="manualSelect('shibuya')">渋谷</button>
+</div>
+
+<div class="trains-section">
+  <div class="section-label">次の列車</div>
+  <div id="trains-container"><div class="loading">位置情報を取得中…</div></div>
+</div>
+
+<div id="status-bar">
+  <span id="status-msg">接続中…</span>
+  <span id="last-update"></span>
+</div>
+
+<script>
+const STATIONS = {
+  sangenjaya:    { name:"三軒茶屋",  sub:"東急田園都市線 上り（渋谷方面）", lineLabel:"田園都市線", lineTag:"tag-tokyu", railway:"odpt.Railway:TokyuRailway.DenentoshiLine" },
+  ikejiriohashi: { name:"池尻大橋",  sub:"東急田園都市線 上り（渋谷方面）", lineLabel:"田園都市線", lineTag:"tag-tokyu", railway:"odpt.Railway:TokyuRailway.DenentoshiLine" },
+  shibuya:       { name:"渋谷",      sub:"JR湘南新宿ライン 下り（小田原方面）", lineLabel:"湘南新宿ライン", lineTag:"tag-jr", railway:"odpt.Railway:JR-East.ShonanShinjuku" },
+};
+
+const ODPT_TOKEN = "czqriy4zrz2hmhrvvlaawwz9l2oso4oj6ps5k6tb1op7x7mafh1dr4h3381o1c4y";
+
+const TIMETABLE = {
+  sangenjaya: {
+    weekday: [
+      [5,27,"渋谷",10],[5,42,"渋谷",10],[5,53,"渋谷",10],[6,2,"渋谷",10],[6,9,"渋谷",10],[6,16,"渋谷",10],[6,23,"渋谷",10],[6,29,"渋谷",10],[6,35,"渋谷",10],[6,40,"渋谷",10],[6,45,"渋谷",10],[6,50,"渋谷",10],[6,55,"渋谷",10],[7,0,"渋谷",10],[7,5,"渋谷",10],[7,10,"渋谷",10],[7,15,"渋谷",10],[7,20,"渋谷",10],[7,24,"渋谷",10],[7,28,"渋谷",10],[7,32,"渋谷",10],[7,36,"渋谷",10],[7,40,"渋谷",10],[7,44,"渋谷",10],[7,48,"渋谷",10],[7,52,"渋谷",10],[7,56,"渋谷",10],[8,0,"渋谷",10],[8,4,"渋谷",10],[8,8,"渋谷",10],[8,12,"渋谷",10],[8,16,"渋谷",10],[8,21,"渋谷",10],[8,26,"渋谷",10],[8,31,"渋谷",10],[8,36,"渋谷",10],[8,41,"渋谷",10],[8,47,"渋谷",10],[8,54,"渋谷",10],[9,1,"渋谷",10],[9,8,"渋谷",10],[9,15,"渋谷",10],[9,22,"渋谷",10],[9,29,"渋谷",10],[9,37,"渋谷",10],[9,45,"渋谷",10],[9,53,"渋谷",10],[10,1,"渋谷",10],[10,9,"渋谷",10],[10,17,"渋谷",10],[10,25,"渋谷",10],[10,33,"渋谷",10],[10,41,"渋谷",10],[10,49,"渋谷",10],[10,57,"渋谷",10],[11,5,"渋谷",10],[11,13,"渋谷",10],[11,21,"渋谷",10],[11,29,"渋谷",10],[11,37,"渋谷",10],[11,45,"渋谷",10],[11,53,"渋谷",10],[12,1,"渋谷",10],[12,9,"渋谷",10],[12,17,"渋谷",10],[12,25,"渋谷",10],[12,33,"渋谷",10],[12,41,"渋谷",10],[12,49,"渋谷",10],[12,57,"渋谷",10],[13,5,"渋谷",10],[13,13,"渋谷",10],[13,21,"渋谷",10],[13,29,"渋谷",10],[13,37,"渋谷",10],[13,45,"渋谷",10],[13,53,"渋谷",10],[14,1,"渋谷",10],[14,9,"渋谷",10],[14,17,"渋谷",10],[14,25,"渋谷",10],[14,33,"渋谷",10],[14,41,"渋谷",10],[14,49,"渋谷",10],[14,57,"渋谷",10],[15,5,"渋谷",10],[15,13,"渋谷",10],[15,21,"渋谷",10],[15,29,"渋谷",10],[15,37,"渋谷",10],[15,45,"渋谷",10],[15,53,"渋谷",10],[16,1,"渋谷",10],[16,9,"渋谷",10],[16,17,"渋谷",10],[16,25,"渋谷",10],[16,33,"渋谷",10],[16,40,"渋谷",10],[16,47,"渋谷",10],[16,54,"渋谷",10],[17,1,"渋谷",10],[17,7,"渋谷",10],[17,13,"渋谷",10],[17,19,"渋谷",10],[17,25,"渋谷",10],[17,31,"渋谷",10],[17,37,"渋谷",10],[17,43,"渋谷",10],[17,49,"渋谷",10],[17,55,"渋谷",10],[18,1,"渋谷",10],[18,7,"渋谷",10],[18,13,"渋谷",10],[18,19,"渋谷",10],[18,25,"渋谷",10],[18,31,"渋谷",10],[18,37,"渋谷",10],[18,43,"渋谷",10],[18,49,"渋谷",10],[18,55,"渋谷",10],[19,1,"渋谷",10],[19,7,"渋谷",10],[19,13,"渋谷",10],[19,19,"渋谷",10],[19,26,"渋谷",10],[19,33,"渋谷",10],[19,40,"渋谷",10],[19,47,"渋谷",10],[19,54,"渋谷",10],[20,2,"渋谷",10],[20,10,"渋谷",10],[20,18,"渋谷",10],[20,26,"渋谷",10],[20,34,"渋谷",10],[20,42,"渋谷",10],[20,50,"渋谷",10],[20,58,"渋谷",10],[21,7,"渋谷",10],[21,16,"渋谷",10],[21,25,"渋谷",10],[21,34,"渋谷",10],[21,43,"渋谷",10],[21,52,"渋谷",10],[22,2,"渋谷",10],[22,12,"渋谷",10],[22,22,"渋谷",10],[22,32,"渋谷",10],[22,43,"渋谷",10],[22,54,"渋谷",10],[23,5,"渋谷",10],[23,16,"渋谷",10],[23,27,"渋谷",10],[23,39,"渋谷",10],[23,51,"渋谷",10],[24,4,"渋谷",10],[24,18,"渋谷",10],
+    ],
+    holiday: [
+      [5,35,"渋谷",10],[5,55,"渋谷",10],[6,10,"渋谷",10],[6,25,"渋谷",10],[6,38,"渋谷",10],[6,50,"渋谷",10],[7,0,"渋谷",10],[7,10,"渋谷",10],[7,20,"渋谷",10],[7,30,"渋谷",10],[7,40,"渋谷",10],[7,50,"渋谷",10],[8,0,"渋谷",10],[8,10,"渋谷",10],[8,20,"渋谷",10],[8,30,"渋谷",10],[8,40,"渋谷",10],[8,50,"渋谷",10],[9,0,"渋谷",10],[9,10,"渋谷",10],[9,20,"渋谷",10],[9,30,"渋谷",10],[9,40,"渋谷",10],[9,50,"渋谷",10],[10,0,"渋谷",10],[10,10,"渋谷",10],[10,20,"渋谷",10],[10,30,"渋谷",10],[10,40,"渋谷",10],[10,50,"渋谷",10],[11,0,"渋谷",10],[11,10,"渋谷",10],[11,20,"渋谷",10],[11,30,"渋谷",10],[11,40,"渋谷",10],[11,50,"渋谷",10],[12,0,"渋谷",10],[12,10,"渋谷",10],[12,20,"渋谷",10],[12,30,"渋谷",10],[12,40,"渋谷",10],[12,50,"渋谷",10],[13,0,"渋谷",10],[13,10,"渋谷",10],[13,20,"渋谷",10],[13,30,"渋谷",10],[13,40,"渋谷",10],[13,50,"渋谷",10],[14,0,"渋谷",10],[14,10,"渋谷",10],[14,20,"渋谷",10],[14,30,"渋谷",10],[14,40,"渋谷",10],[14,50,"渋谷",10],[15,0,"渋谷",10],[15,10,"渋谷",10],[15,20,"渋谷",10],[15,30,"渋谷",10],[15,40,"渋谷",10],[15,50,"渋谷",10],[16,0,"渋谷",10],[16,10,"渋谷",10],[16,20,"渋谷",10],[16,30,"渋谷",10],[16,40,"渋谷",10],[16,50,"渋谷",10],[17,0,"渋谷",10],[17,10,"渋谷",10],[17,20,"渋谷",10],[17,30,"渋谷",10],[17,40,"渋谷",10],[17,50,"渋谷",10],[18,0,"渋谷",10],[18,10,"渋谷",10],[18,20,"渋谷",10],[18,30,"渋谷",10],[18,40,"渋谷",10],[18,50,"渋谷",10],[19,0,"渋谷",10],[19,10,"渋谷",10],[19,20,"渋谷",10],[19,30,"渋谷",10],[19,40,"渋谷",10],[19,50,"渋谷",10],[20,0,"渋谷",10],[20,11,"渋谷",10],[20,22,"渋谷",10],[20,33,"渋谷",10],[20,44,"渋谷",10],[20,55,"渋谷",10],[21,6,"渋谷",10],[21,17,"渋谷",10],[21,28,"渋谷",10],[21,40,"渋谷",10],[21,52,"渋谷",10],[22,4,"渋谷",10],[22,16,"渋谷",10],[22,28,"渋谷",10],[22,40,"渋谷",10],[22,52,"渋谷",10],[23,5,"渋谷",10],[23,18,"渋谷",10],[23,32,"渋谷",10],[23,47,"渋谷",10],[24,2,"渋谷",10],[24,17,"渋谷",10],
+    ]
+  },
+  ikejiriohashi: {
+    weekday: [
+      [5,29,"渋谷",10],[5,44,"渋谷",10],[5,55,"渋谷",10],[6,4,"渋谷",10],[6,11,"渋谷",10],[6,18,"渋谷",10],[6,25,"渋谷",10],[6,31,"渋谷",10],[6,37,"渋谷",10],[6,42,"渋谷",10],[6,47,"渋谷",10],[6,52,"渋谷",10],[6,57,"渋谷",10],[7,2,"渋谷",10],[7,7,"渋谷",10],[7,12,"渋谷",10],[7,17,"渋谷",10],[7,22,"渋谷",10],[7,26,"渋谷",10],[7,30,"渋谷",10],[7,34,"渋谷",10],[7,38,"渋谷",10],[7,42,"渋谷",10],[7,46,"渋谷",10],[7,50,"渋谷",10],[7,54,"渋谷",10],[7,58,"渋谷",10],[8,2,"渋谷",10],[8,6,"渋谷",10],[8,10,"渋谷",10],[8,14,"渋谷",10],[8,18,"渋谷",10],[8,23,"渋谷",10],[8,28,"渋谷",10],[8,33,"渋谷",10],[8,38,"渋谷",10],[8,43,"渋谷",10],[8,49,"渋谷",10],[8,56,"渋谷",10],[9,3,"渋谷",10],[9,10,"渋谷",10],[9,17,"渋谷",10],[9,24,"渋谷",10],[9,31,"渋谷",10],[9,39,"渋谷",10],[9,47,"渋谷",10],[9,55,"渋谷",10],[10,3,"渋谷",10],[10,11,"渋谷",10],[10,19,"渋谷",10],[10,27,"渋谷",10],[10,35,"渋谷",10],[10,43,"渋谷",10],[10,51,"渋谷",10],[10,59,"渋谷",10],[11,7,"渋谷",10],[11,15,"渋谷",10],[11,23,"渋谷",10],[11,31,"渋谷",10],[11,39,"渋谷",10],[11,47,"渋谷",10],[11,55,"渋谷",10],[12,3,"渋谷",10],[12,11,"渋谷",10],[12,19,"渋谷",10],[12,27,"渋谷",10],[12,35,"渋谷",10],[12,43,"渋谷",10],[12,51,"渋谷",10],[12,59,"渋谷",10],[13,7,"渋谷",10],[13,15,"渋谷",10],[13,23,"渋谷",10],[13,31,"渋谷",10],[13,39,"渋谷",10],[13,47,"渋谷",10],[13,55,"渋谷",10],[14,3,"渋谷",10],[14,11,"渋谷",10],[14,19,"渋谷",10],[14,27,"渋谷",10],[14,35,"渋谷",10],[14,43,"渋谷",10],[14,51,"渋谷",10],[14,59,"渋谷",10],[15,7,"渋谷",10],[15,15,"渋谷",10],[15,23,"渋谷",10],[15,31,"渋谷",10],[15,39,"渋谷",10],[15,47,"渋谷",10],[15,55,"渋谷",10],[16,3,"渋谷",10],[16,11,"渋谷",10],[16,19,"渋谷",10],[16,27,"渋谷",10],[16,35,"渋谷",10],[16,42,"渋谷",10],[16,49,"渋谷",10],[16,56,"渋谷",10],[17,3,"渋谷",10],[17,9,"渋谷",10],[17,15,"渋谷",10],[17,21,"渋谷",10],[17,27,"渋谷",10],[17,33,"渋谷",10],[17,39,"渋谷",10],[17,45,"渋谷",10],[17,51,"渋谷",10],[17,57,"渋谷",10],[18,3,"渋谷",10],[18,9,"渋谷",10],[18,15,"渋谷",10],[18,21,"渋谷",10],[18,27,"渋谷",10],[18,33,"渋谷",10],[18,39,"渋谷",10],[18,45,"渋谷",10],[18,51,"渋谷",10],[18,57,"渋谷",10],[19,3,"渋谷",10],[19,9,"渋谷",10],[19,15,"渋谷",10],[19,21,"渋谷",10],[19,28,"渋谷",10],[19,35,"渋谷",10],[19,42,"渋谷",10],[19,49,"渋谷",10],[19,56,"渋谷",10],[20,4,"渋谷",10],[20,12,"渋谷",10],[20,20,"渋谷",10],[20,28,"渋谷",10],[20,36,"渋谷",10],[20,44,"渋谷",10],[20,52,"渋谷",10],[21,0,"渋谷",10],[21,9,"渋谷",10],[21,18,"渋谷",10],[21,27,"渋谷",10],[21,36,"渋谷",10],[21,45,"渋谷",10],[21,54,"渋谷",10],[22,4,"渋谷",10],[22,14,"渋谷",10],[22,24,"渋谷",10],[22,34,"渋谷",10],[22,45,"渋谷",10],[22,56,"渋谷",10],[23,7,"渋谷",10],[23,18,"渋谷",10],[23,29,"渋谷",10],[23,41,"渋谷",10],[23,53,"渋谷",10],[24,6,"渋谷",10],[24,20,"渋谷",10],
+    ],
+    holiday: [
+      [5,37,"渋谷",10],[5,57,"渋谷",10],[6,12,"渋谷",10],[6,27,"渋谷",10],[6,40,"渋谷",10],[6,52,"渋谷",10],[7,2,"渋谷",10],[7,12,"渋谷",10],[7,22,"渋谷",10],[7,32,"渋谷",10],[7,42,"渋谷",10],[7,52,"渋谷",10],[8,2,"渋谷",10],[8,12,"渋谷",10],[8,22,"渋谷",10],[8,32,"渋谷",10],[8,42,"渋谷",10],[8,52,"渋谷",10],[9,2,"渋谷",10],[9,12,"渋谷",10],[9,22,"渋谷",10],[9,32,"渋谷",10],[9,42,"渋谷",10],[9,52,"渋谷",10],[10,2,"渋谷",10],[10,12,"渋谷",10],[10,22,"渋谷",10],[10,32,"渋谷",10],[10,42,"渋谷",10],[10,52,"渋谷",10],[11,2,"渋谷",10],[11,12,"渋谷",10],[11,22,"渋谷",10],[11,32,"渋谷",10],[11,42,"渋谷",10],[11,52,"渋谷",10],[12,2,"渋谷",10],[12,12,"渋谷",10],[12,22,"渋谷",10],[12,32,"渋谷",10],[12,42,"渋谷",10],[12,52,"渋谷",10],[13,2,"渋谷",10],[13,12,"渋谷",10],[13,22,"渋谷",10],[13,32,"渋谷",10],[13,42,"渋谷",10],[13,52,"渋谷",10],[14,2,"渋谷",10],[14,12,"渋谷",10],[14,22,"渋谷",10],[14,32,"渋谷",10],[14,42,"渋谷",10],[14,52,"渋谷",10],[15,2,"渋谷",10],[15,12,"渋谷",10],[15,22,"渋谷",10],[15,32,"渋谷",10],[15,42,"渋谷",10],[15,52,"渋谷",10],[16,2,"渋谷",10],[16,12,"渋谷",10],[16,22,"渋谷",10],[16,32,"渋谷",10],[16,42,"渋谷",10],[16,52,"渋谷",10],[17,2,"渋谷",10],[17,12,"渋谷",10],[17,22,"渋谷",10],[17,32,"渋谷",10],[17,42,"渋谷",10],[17,52,"渋谷",10],[18,2,"渋谷",10],[18,12,"渋谷",10],[18,22,"渋谷",10],[18,32,"渋谷",10],[18,42,"渋谷",10],[18,52,"渋谷",10],[19,2,"渋谷",10],[19,12,"渋谷",10],[19,22,"渋谷",10],[19,32,"渋谷",10],[19,42,"渋谷",10],[19,52,"渋谷",10],[20,2,"渋谷",10],[20,13,"渋谷",10],[20,24,"渋谷",10],[20,35,"渋谷",10],[20,46,"渋谷",10],[20,57,"渋谷",10],[21,8,"渋谷",10],[21,19,"渋谷",10],[21,30,"渋谷",10],[21,42,"渋谷",10],[21,54,"渋谷",10],[22,6,"渋谷",10],[22,18,"渋谷",10],[22,30,"渋谷",10],[22,42,"渋谷",10],[22,54,"渋谷",10],[23,7,"渋谷",10],[23,20,"渋谷",10],[23,34,"渋谷",10],[23,49,"渋谷",10],[24,4,"渋谷",10],[24,19,"渋谷",10],
+    ]
+  },
+  shibuya: {
+    weekday: [
+      [5,20,"小田原",15],[5,37,"平塚",15],[5,50,"国府津",15],[6,2,"小田原",15],[6,12,"平塚",15],[6,22,"小田原",15],[6,32,"平塚",15],[6,42,"小田原",15],[6,52,"平塚",15],[7,2,"小田原",15],[7,12,"平塚",15],[7,22,"小田原",15],[7,32,"平塚",15],[7,40,"小田原",15],[7,48,"平塚",15],[7,56,"小田原",15],[8,4,"平塚",15],[8,12,"小田原",15],[8,20,"平塚",15],[8,29,"小田原",15],[8,38,"平塚",15],[8,47,"小田原",15],[8,57,"平塚",15],[9,9,"小田原",15],[9,21,"平塚",15],[9,33,"小田原",15],[9,45,"平塚",15],[9,57,"国府津",15],[10,9,"平塚",15],[10,21,"小田原",15],[10,33,"平塚",15],[10,45,"小田原",15],[10,57,"平塚",15],[11,9,"小田原",15],[11,21,"平塚",15],[11,33,"小田原",15],[11,45,"平塚",15],[11,57,"小田原",15],[12,9,"平塚",15],[12,21,"小田原",15],[12,33,"平塚",15],[12,45,"小田原",15],[12,57,"平塚",15],[13,9,"小田原",15],[13,21,"平塚",15],[13,33,"小田原",15],[13,45,"平塚",15],[13,57,"小田原",15],[14,9,"平塚",15],[14,21,"小田原",15],[14,33,"平塚",15],[14,45,"小田原",15],[14,57,"平塚",15],[15,9,"小田原",15],[15,21,"平塚",15],[15,33,"小田原",15],[15,45,"平塚",15],[15,57,"小田原",15],[16,9,"平塚",15],[16,21,"小田原",15],[16,33,"平塚",15],[16,43,"小田原",15],[16,53,"平塚",15],[17,3,"小田原",15],[17,13,"平塚",15],[17,23,"小田原",15],[17,33,"平塚",15],[17,43,"小田原",15],[17,53,"平塚",15],[18,3,"小田原",15],[18,13,"平塚",15],[18,23,"小田原",15],[18,35,"平塚",15],[18,47,"小田原",15],[18,59,"平塚",15],[19,11,"小田原",15],[19,23,"平塚",15],[19,35,"小田原",15],[19,47,"平塚",15],[19,59,"小田原",15],[20,11,"平塚",15],[20,23,"小田原",15],[20,35,"平塚",15],[20,47,"小田原",15],[20,59,"平塚",15],[21,11,"小田原",15],[21,23,"平塚",15],[21,35,"小田原",15],[21,47,"平塚",15],[21,59,"国府津",15],[22,11,"平塚",15],[22,23,"小田原",15],[22,36,"平塚",15],[22,49,"国府津",15],[23,2,"平塚",15],[23,16,"小田原",15],[23,30,"平塚",15],[23,45,"国府津",15],[24,0,"平塚",15],
+    ],
+    holiday: [
+      [5,20,"小田原",15],[5,40,"平塚",15],[5,58,"国府津",15],[6,14,"小田原",15],[6,28,"平塚",15],[6,40,"小田原",15],[6,52,"平塚",15],[7,4,"小田原",15],[7,16,"平塚",15],[7,28,"小田原",15],[7,40,"平塚",15],[7,52,"小田原",15],[8,4,"平塚",15],[8,16,"小田原",15],[8,28,"平塚",15],[8,40,"小田原",15],[8,52,"平塚",15],[9,4,"小田原",15],[9,16,"平塚",15],[9,28,"小田原",15],[9,40,"平塚",15],[9,52,"小田原",15],[10,4,"平塚",15],[10,16,"小田原",15],[10,28,"平塚",15],[10,40,"小田原",15],[10,52,"平塚",15],[11,4,"小田原",15],[11,16,"平塚",15],[11,28,"小田原",15],[11,40,"平塚",15],[11,52,"小田原",15],[12,4,"平塚",15],[12,16,"小田原",15],[12,28,"平塚",15],[12,40,"小田原",15],[12,52,"平塚",15],[13,4,"小田原",15],[13,16,"平塚",15],[13,28,"小田原",15],[13,40,"平塚",15],[13,52,"小田原",15],[14,4,"平塚",15],[14,16,"小田原",15],[14,28,"平塚",15],[14,40,"小田原",15],[14,52,"平塚",15],[15,4,"小田原",15],[15,16,"平塚",15],[15,28,"小田原",15],[15,40,"平塚",15],[15,52,"小田原",15],[16,4,"平塚",15],[16,16,"小田原",15],[16,28,"平塚",15],[16,40,"小田原",15],[16,52,"平塚",15],[17,4,"小田原",15],[17,16,"平塚",15],[17,28,"小田原",15],[17,40,"平塚",15],[17,52,"小田原",15],[18,4,"平塚",15],[18,16,"小田原",15],[18,28,"平塚",15],[18,40,"小田原",15],[18,52,"平塚",15],[19,4,"小田原",15],[19,16,"平塚",15],[19,28,"小田原",15],[19,40,"平塚",15],[19,52,"小田原",15],[20,4,"平塚",15],[20,17,"小田原",15],[20,30,"平塚",15],[20,43,"小田原",15],[20,56,"平塚",15],[21,9,"小田原",15],[21,22,"平塚",15],[21,35,"小田原",15],[21,48,"国府津",15],[22,1,"平塚",15],[22,14,"小田原",15],[22,28,"平塚",15],[22,42,"国府津",15],[22,56,"平塚",15],[23,11,"小田原",15],[23,26,"平塚",15],[23,42,"国府津",15],[23,58,"平塚",15],
+    ]
+  }
+};
+
+// 境界経度
+const LON_SAN_IKE = (139.6689 + 139.6804) / 2;
+const LON_IKE_SHI = (139.6804 + 139.7016) / 2;
+
+let currentId = "sangenjaya";
+let manualOverride = false;
+let delayCache = {}, delayCacheTs = {};
+
+function detectStation(lat, lon) {
+  if (lon >= LON_IKE_SHI) return "shibuya";
+  if (lon >= LON_SAN_IKE) return "ikejiriohashi";
+  return "sangenjaya";
+}
+
+function updateManualBtns() {
+  document.querySelectorAll('.m-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.id === currentId);
+  });
+  // ボタンにdata-idを付与
+  document.querySelectorAll('.m-btn').forEach((btn, i) => {
+    btn.dataset.id = ['sangenjaya','ikejiriohashi','shibuya'][i];
+  });
+}
+
+function manualSelect(id) {
+  manualOverride = true;
+  currentId = id;
+  updateManualBtns();
+  renderTrains();
+  setTimeout(() => { manualOverride = false; }, 180000);
+}
+
+function startGPS() {
+  if (!navigator.geolocation) {
+    document.getElementById('gps-msg').textContent = 'GPS非対応 → 手動で駅を選択';
+    document.getElementById('manual-bar').classList.add('visible');
+    updateManualBtns();
+    return;
+  }
+  navigator.geolocation.watchPosition(pos => {
+    const { latitude: lat, longitude: lon, accuracy } = pos.coords;
+    document.getElementById('gps-dot').classList.add('active');
+    document.getElementById('gps-msg').textContent = `GPS有効 (精度±${Math.round(accuracy)}m)`;
+    document.getElementById('manual-bar').classList.remove('visible');
+    if (!manualOverride) {
+      const detected = detectStation(lat, lon);
+      if (detected !== currentId) {
+        currentId = detected;
+        renderTrains();
+      }
+    }
+  }, () => {
+    document.getElementById('gps-msg').textContent = 'GPS取得失敗 → 手動で駅を選択';
+    document.getElementById('manual-bar').classList.add('visible');
+    updateManualBtns();
+  }, { enableHighAccuracy: true, maximumAge: 15000 });
+}
+
+async function fetchDelay(railway) {
+  const now = Date.now();
+  if (delayCache[railway] !== undefined && now - (delayCacheTs[railway]||0) < 60000)
+    return delayCache[railway];
+  try {
+    const url = `https://api.odpt.org/api/4/odpt:TrainInformation?odpt:railway=${encodeURIComponent(railway)}&acl:consumerKey=${ODPT_TOKEN}`;
+    const r = await fetch(url, { signal: AbortSignal.timeout(6000) });
+    if (!r.ok) return null;
+    const data = await r.json();
+    let result = null;
+    for (const ti of data) {
+      const txt = ti['odpt:trainInformationText'];
+      const ja = txt && typeof txt==='object' ? (txt['ja']||'') : (txt||'');
+      if (ja.includes('遅延')||ja.includes('遅れ')||ja.includes('運転見合')) { result=ja; break; }
+    }
+    delayCache[railway] = result;
+    delayCacheTs[railway] = now;
+    return result;
+  } catch(e) { return delayCache[railway] ?? null; }
+}
+
+function getNextTrains(id) {
+  const now = new Date();
+  const isHoliday = [0,6].includes(now.getDay());
+  const tt = TIMETABLE[id][isHoliday?'holiday':'weekday'];
+  const nowMin = now.getHours()*60 + now.getMinutes();
+  const result = [];
+  for (const [h,m,dest,cars] of tt) {
+    if (h*60+m < nowMin-1) continue;
+    result.push({ time:`${String(h%24).padStart(2,'0')}:${String(m).padStart(2,'0')}`, dest, cars });
+    if (result.length===3) break;
+  }
+  return result;
+}
+
+async function renderTrains() {
+  const st = STATIONS[currentId];
+  document.getElementById('h-station').textContent = st.name;
+  document.getElementById('h-sub').textContent = st.sub;
+
+  const trains = getNextTrains(currentId);
+  const container = document.getElementById('trains-container');
+  if (!trains.length) { container.innerHTML='<div class="loading">本日の運行は終了しました</div>'; return; }
+
+  const delayText = await fetchDelay(st.railway);
+  const hasDelay = !!delayText;
+
+  container.innerHTML = '';
+  trains.forEach((t, i) => {
+    const div = document.createElement('div');
+    div.className = `train-card${i===0?' next':''}`;
+    div.innerHTML = `
+      <div class="dep-time">${t.time}</div>
+      <div class="destination">▶ ${t.dest}</div>
+      <div class="tags">
+        <span class="tag ${st.lineTag}">${st.lineLabel}</span>
+        <span class="tag tag-cars">${t.cars}両</span>
+        ${hasDelay ? `<span class="tag tag-delay">⚠ 遅延</span>` : `<span class="tag tag-ontime">✓ 定刻</span>`}
+        <span class="tag tag-rank">${i+1}</span>
+      </div>
+      ${hasDelay&&i===0 ? `<div class="delay-detail">⚠ ${delayText.slice(0,80)}</div>` : ''}
+    `;
+    container.appendChild(div);
+  });
+
+  const now=new Date(), p=v=>String(v).padStart(2,'0');
+  document.getElementById('status-msg').textContent = `● LIVE  ${st.name}`;
+  document.getElementById('last-update').textContent = `更新 ${p(now.getHours())}:${p(now.getMinutes())}:${p(now.getSeconds())}`;
+}
+
+function updateClock() {
+  const n=new Date(), p=v=>String(v).padStart(2,'0');
+  document.getElementById('clock').textContent = `${p(n.getHours())}:${p(n.getMinutes())}`;
+  const days=['日','月','火','水','木','金','土'];
+  document.getElementById('date-str').textContent = `${n.getMonth()+1}/${n.getDate()}(${days[n.getDay()]})`;
+}
+
+updateClock();
+setInterval(updateClock, 1000);
+renderTrains();
+setInterval(renderTrains, 30000);
+startGPS();
+</script>
+</body>
+</html>
