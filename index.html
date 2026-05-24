@@ -141,6 +141,16 @@
   <span id="gps-msg">GPS取得中…</span>
 </div>
 
+<!-- 渋谷SSN切替ボタン -->
+<div id="ssn-bar" style="padding:8px 12px; border-bottom:1px solid #0d2035; background:#090f18; display:flex; align-items:center; gap:10px;">
+  <button id="ssn-btn" onclick="toggleShibuya()"
+    style="font-size:0.82rem; padding:6px 16px; border-radius:20px;
+           border:1px solid #3a5a7a; background:transparent; color:#3a5a7a; cursor:pointer;">
+    🚃 渋谷発 湘南新宿ライン（大宮方面）を見る
+  </button>
+  <span id="ssn-hint" style="font-size:0.68rem; color:#3a5a7a;"></span>
+</div>
+
 <!-- GPS失敗時のみ表示 -->
 <div class="manual-bar" id="manual-bar">
   <button class="m-btn" onclick="manualSelect('sangenjaya')">三軒茶屋</button>
@@ -233,6 +243,35 @@ const LON_SAN_IKE = (139.6689 + 139.6804) / 2;
 const LON_IKE_SHI = (139.6804 + 139.7016) / 2;
 
 let currentId = "sangenjaya";
+
+let shibuyaMode = false;
+let savedId = null;
+
+function toggleShibuya() {
+  const btn = document.getElementById('ssn-btn');
+  const hint = document.getElementById('ssn-hint');
+  if (!shibuyaMode) {
+    savedId = currentId;
+    shibuyaMode = true;
+    manualOverride = true;
+    currentId = 'shibuya';
+    btn.style.borderColor = '#ff7120';
+    btn.style.color = '#ff7120';
+    btn.textContent = '↩ 元の駅に戻る';
+    hint.textContent = '（GPS自動切替は一時停止中）';
+    renderTrains();
+  } else {
+    shibuyaMode = false;
+    manualOverride = false;
+    currentId = savedId || 'sangenjaya';
+    btn.style.borderColor = '#3a5a7a';
+    btn.style.color = '#3a5a7a';
+    btn.textContent = '🚃 渋谷発 湘南新宿ライン（大宮方面）を見る';
+    hint.textContent = '';
+    renderTrains();
+  }
+}
+
 let manualOverride = false;
 let delayCache = {}, delayCacheTs = {};
 
