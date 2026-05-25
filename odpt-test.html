@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ODPT接続テスト</title>
+<style>
+  body { background:#111; color:#eee; font-family:sans-serif; padding:20px; }
+  h2 { color:#00d4ff; }
+  pre { background:#222; padding:12px; border-radius:6px; font-size:0.75rem;
+        white-space:pre-wrap; word-break:break-all; }
+  .ok  { color:#39ff14; font-weight:bold; }
+  .err { color:#ff2d55; font-weight:bold; }
+  button { background:#00d4ff; color:#000; border:none; padding:10px 24px;
+           border-radius:6px; font-size:1rem; font-weight:bold; cursor:pointer; }
+</style>
+</head>
+<body>
+<h2>ODPT 接続テスト</h2>
+<p style="font-size:0.85rem;color:#888">ボタンを押すと三軒茶屋の時刻表APIを叩きます</p>
+<br>
+<button onclick="runTest()">テスト実行</button>
+<br><br>
+<div id="result">待機中…</div>
+
+<script>
+const TOKEN = "czqriy4zrz2hmhrvvlaawwz9l2oso4oj6ps5k6tb1op7x7mafh1dr4h3381o1c4y";
+
+async function runTest() {
+  const el = document.getElementById('result');
+  el.innerHTML = '<span style="color:#ffaa44">リクエスト中…</span>';
+  
+  const url = `https://api.odpt.org/api/4/odpt:StationTimetable?odpt:station=odpt.Station:TokyuRailway.DenentoshiLine.Sangenjaya&acl:consumerKey=${TOKEN}`;
+  
+  try {
+    const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!r.ok) {
+      el.innerHTML = `<span class="err">❌ HTTPエラー: ${r.status} ${r.statusText}</span>`;
+      return;
+    }
+    const data = await r.json();
+    if (Array.isArray(data) && data.length > 0) {
+      el.innerHTML = `<span class="ok">✅ 成功！ ${data.length}件取得</span><br><br>`;
+      // 最初の1件の構造を表示
+      el.innerHTML += `<pre>${JSON.stringify(data[0], null, 2).slice(0, 1000)}...</pre>`;
+    } else {
+      el.innerHTML = `<span class="err">⚠️ データなし（空配列）</span><br><pre>${JSON.stringify(data)}</pre>`;
+    }
+  } catch(e) {
+    el.innerHTML = `<span class="err">❌ エラー: ${e.message}</span><br>
+      <br><small style="color:#888">CORSエラーの場合：「Failed to fetch」または「CORS」という文字が含まれます</small>`;
+  }
+}
+</script>
+</body>
+</html>
