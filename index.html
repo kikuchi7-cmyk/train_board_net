@@ -89,6 +89,47 @@
 </div>
 
 <script>
+const RASPI_API = "http://100.92.43.14:8765";
+const DELAY_HOURS = {start: 18, end: 21}; // 遅延情報を取得する時間帯
+
+let raspiDelayCache = null;
+let raspiDelayCacheTs = 0;
+
+async function fetchRaspiDelay() {
+  const now = new Date();
+  const hour = now.getHours();
+  // 18:00〜21:00以外は取得しない
+  if (hour < DELAY_HOURS.start || hour >= DELAY_HOURS.end) {
+    return null;
+  }
+  // 2分キャッシュ
+  if (raspiDelayCache && Date.now() - raspiDelayCacheTs < 120000) {
+    return raspiDelayCache;
+  }
+  try {
+    const r = await fetch(`${RASPI_API}/api/extra_delays`, {signal: AbortSignal.timeout(5000)});
+    if (r.ok) {
+      raspiDelayCache = await r.json();
+      raspiDelayCacheTs = Date.now();
+      return raspiDelayCache;
+    }
+  } catch(e) {}
+  return raspiDelayCache; // エラー時はキャッシュを返す
+}
+
+function getDelayForStation(stationId, delayData) {
+  if (!delayData) return {on_time: true, delay_text: ''};
+  // 三軒茶屋・池尻大橋 → 田園都市線
+  if (stationId === 'sangenjaya' || stationId === 'ikejiriohashi') {
+    return delayData['田園都市線'] || {on_time: true, delay_text: ''};
+  }
+  // 渋谷 → 湘南新宿ライン
+  if (stationId === 'shibuya') {
+    return delayData['湘南新宿ライン'] || {on_time: true, delay_text: ''};
+  }
+  return {on_time: true, delay_text: ''};
+}
+
 const STATIONS = {
   sangenjaya:    {name:"三軒茶屋",  sub:"東急田園都市線 上り（渋谷・押上方面）", lineLabel:"田園都市線", lineTag:"tag-tokyu", railway:"odpt.Railway:TokyuRailway.DenentoshiLine"},
   ikejiriohashi: {name:"池尻大橋",  sub:"東急田園都市線 上り（渋谷・押上方面）", lineLabel:"田園都市線", lineTag:"tag-tokyu", railway:"odpt.Railway:TokyuRailway.DenentoshiLine"},
@@ -914,8 +955,11 @@ async function renderTrains(){
   const trains=getNextTrains(currentId);
   const container=document.getElementById('trains-container');
   if(!trains.length){container.innerHTML='<div class="loading">本日の運行は終了しました</div>';return;}
-  const delayText=await fetchDelay(st.railway);
-  const hasDelay=!!delayText;
+  // ラズパイAPIから遅延情報取得（18-21時のみ）
+  const raspiDelay = await fetchRaspiDelay();
+  const stationDelay = getDelayForStation(currentId, raspiDelay);
+  const hasDelay = !stationDelay.on_time;
+  const delayText = stationDelay.delay_text;
   container.innerHTML='';
   trains.forEach((t,i)=>{
     const div=document.createElement('div');
