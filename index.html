@@ -108,7 +108,7 @@ async function fetchRaspiDelay() {
   }
   try {
     console.log('fetchRaspiDelay: fetching', `${RASPI_API}/api/extra_delays`);
-    const r = await fetch(`${RASPI_API}/api/extra_delays`, {signal: AbortSignal.timeout(5000)});
+    const r = await fetch(`${RASPI_API}/api/extra_delays`, {signal: AbortSignal.timeout(15000)});
     console.log('fetchRaspiDelay: status', r.status);
     if (r.ok) {
       raspiDelayCache = await r.json();
@@ -116,7 +116,7 @@ async function fetchRaspiDelay() {
       console.log('fetchRaspiDelay: data', JSON.stringify(raspiDelayCache));
       return raspiDelayCache;
     }
-  } catch(e) { console.log('fetchRaspiDelay: error', e); }
+  } catch(e) { alert('delay fetch error: ' + e.message + ' url:' + `${RASPI_API}/api/extra_delays`); console.log('fetchRaspiDelay: error', e); }
   return raspiDelayCache; // エラー時はキャッシュを返す
 }
 
